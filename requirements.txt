@@ -1,4 +1,6 @@
 fastapi
 sse-starlette
 uvicorn[standard]
-asyncio
+requests
+torch
+transformers
