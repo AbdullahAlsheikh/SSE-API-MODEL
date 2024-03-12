@@ -55,6 +55,8 @@ class Body(BaseModel):
     sender: str
     text: str
     on_call_status: bool 
+
+
     
 
 def fetch_rasa_response(message):
@@ -152,11 +154,11 @@ async def message_stream(request: Request):
                 break
 
             try:
-                data = await asyncio.wait_for(on_call_queue.get(), 1800)
+                data = on_call_queue.get_nowait()#await asyncio.wait_for(on_call_queue.get(), 1800)
                 logger.debug("length of queue: " + str(on_call_queue.qsize()))
                 logger.debug("Porcssing Queue:" + data["conversation"]["sender"] + "--" + data["conversation"]["message"])
                 yield {
-                    "event": "new_message",
+                    "event": "message",
                     "id": "message_id",
                     "retry": MESSAGE_STREAM_RETRY_TIMEOUT,
                     "data": json.dumps(data),
