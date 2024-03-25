@@ -4,6 +4,8 @@ from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from fastapi import FastAPI, Request
 from fastapi import HTTPException
+from deep_translator import GoogleTranslator
+from langdetect import detect
 
 import uvicorn
 import sys
@@ -43,6 +45,7 @@ app.add_middleware(
 )
 
 on_call_queue = asyncio.Queue()
+target_lag = 'ar'
 
 
 sentiment_classifier = pipeline(
@@ -117,12 +120,18 @@ def sentiment_score(scores):
 
 async def process_message(body:Body):
     ##Processing message from the client side (taking in call transcripts)
+    global target_lag
     text = stage_text(body.text)
+    
     if body.sender.lower() == 'agent':
         sentiment_score = await fetch_sentiment_score(text)
+        #target should be the client's language
+        translation =  GoogleTranslator(source='ar', target=target_lag).translate(body.text)
         rasa_response = "No Instruction"
     else:
         rasa_response = fetch_rasa_response(text)
+        target_lag = detect(body.text)
+        translation =  GoogleTranslator(source=target_lag, target='ar').translate(body.text)
         sentiment_score = -1
 
     data_json = {
@@ -131,11 +140,15 @@ async def process_message(body:Body):
         "call status": body.on_call_status,
         "conversation": {
             "sender": body.sender,
-            "message": body.text
+            "message": translation
         }
     }
     on_call_queue.put_nowait(data_json)
 
+
+@app.get("/")
+async def sanity_check():
+    return {"message":"Hello World"}
 
 @app.post("/v1/leap-feature/")
 async def sentiment(body:Body):

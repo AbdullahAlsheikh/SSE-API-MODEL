@@ -4,3 +4,4 @@ uvicorn[standard]
 requests
 torch
 transformers
+deep_translator
