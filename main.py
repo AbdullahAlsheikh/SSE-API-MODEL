@@ -57,6 +57,8 @@ sentiment_classifier = pipeline(
 class Body(BaseModel):
     sender: str
     text: str
+    currlang: str
+    targetlang: str 
     on_call_status: bool 
 
 
@@ -120,30 +122,21 @@ def sentiment_score(scores):
 
 async def process_message(body:Body):
     ##Processing message from the client side (taking in call transcripts)
-    global target_lag
-    text = stage_text(body.text)
-    
-    if body.sender.lower() == 'agent':
-        sentiment_score = await fetch_sentiment_score(text)
-        #target should be the client's language
-        translation =  GoogleTranslator(source='ar', target=target_lag).translate(body.text)
-        rasa_response = "No Instruction"
-    else:
-        rasa_response = fetch_rasa_response(text)
-        target_lag = detect(body.text)
-        translation =  GoogleTranslator(source=target_lag, target='ar').translate(body.text)
-        sentiment_score = -1
-
     data_json = {
-        "sentiment": sentiment_score,
-        "co-pilot": rasa_response, 
         "call status": body.on_call_status,
         "conversation": {
             "sender": body.sender,
-            "message": translation
         }
     }
+
+    translation =  GoogleTranslator(source=body.currlang, target=body.targetlang).translate(body.text)
+
+    data_json["conversation"]["message_orginal"] = body.text
+    data_json["conversation"]["message_translated"] = translation
+    
+    
     on_call_queue.put_nowait(data_json)
+    return data_json
 
 
 @app.get("/")
@@ -151,11 +144,11 @@ async def sanity_check():
     return {"message":"Hello World"}
 
 @app.post("/v1/leap-feature/")
-async def sentiment(body:Body):
+async def message(body:Body):
     logger.debug("Added: " +  body.sender + "--"+ body.text)
-    asyncio.create_task(process_message(body)) 
+    response = await  process_message(body)
     logger.debug("Queue Length:" + str(on_call_queue.qsize()))
-    return {"message": "Processing message"}
+    return response
 
 
 @app.get("/v2/leap-feature/stream")
@@ -169,7 +162,7 @@ async def message_stream(request: Request):
             try:
                 data = on_call_queue.get_nowait()#await asyncio.wait_for(on_call_queue.get(), 1800)
                 logger.debug("length of queue: " + str(on_call_queue.qsize()))
-                logger.debug("Porcssing Queue:" + data["conversation"]["sender"] + "--" + data["conversation"]["message"])
+                logger.debug("Porcssing Queue:" + str(data["conversation"]))
                 yield {
                     "event": "message",
                     "id": "message_id",
